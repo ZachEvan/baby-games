@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="打地鼠">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>打地鼠</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(180deg, #d9f2c8 0%, #bde8a8 60%, #a8dc90 100%);
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;
+    display: flex; flex-direction: column;
+    height: 100dvh;
+    padding: calc(env(safe-area-inset-top)) calc(env(safe-area-inset-right)) calc(env(safe-area-inset-bottom)) calc(env(safe-area-inset-left));
+  }
+
+  header { text-align: center; padding: 8px 0 2px; }
+  header h1 { margin: 0; font-size: clamp(20px, 4vmin, 30px); color: #4a7a2f; font-weight: 700; }
+  #hud { margin-top: 4px; font-size: clamp(18px, 3.6vmin, 28px); color: #5a4a2f; font-weight: 700; }
+  #bar { width: min(70%, 420px); height: 14px; margin: 6px auto 0; background: rgba(255,255,255,.6); border-radius: 999px; overflow: hidden; }
+  #fill { height: 100%; width: 0; background: linear-gradient(90deg, #ffd166, #ff8fb3); border-radius: 999px; transition: width .3s; }
+
+  #board {
+    flex: 1; display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 10px; padding: 10px 16px; align-content: center;
+    max-width: 720px; width: 100%; margin: 0 auto;
+  }
+  .hole {
+    position: relative; overflow: hidden; cursor: pointer;
+    background: radial-gradient(ellipse at 50% 30%, #9a7a58 0%, #7a5a3c 75%);
+    border-radius: 30px;
+    box-shadow: inset 0 6px 12px rgba(0,0,0,.25);
+  }
+  .dark {
+    position: absolute; left: 10%; right: 10%; bottom: 0; height: 40%;
+    background: radial-gradient(ellipse at center, #22150c 0%, #3a2515 75%);
+    border-radius: 50%; z-index: 2;
+  }
+  .critter {
+    position: absolute; left: 50%; bottom: 14%;
+    transform: translate(-50%, 140%);
+    font-size: clamp(48px, 11vmin, 96px); line-height: 1;
+    z-index: 1;
+    transition: transform .16s cubic-bezier(.34,1.56,.64,1);
+    pointer-events: none;
+  }
+  .critter.up { transform: translate(-50%, 0); }
+  .critter.hit-anim { transform: translate(-50%, 0) rotate(360deg) scale(.4); transition: transform .4s ease-in; }
+  .critter.shake { animation: shake .5s ease-in-out; }
+  .critter.angry { filter: grayscale(.85); }
+
+  .hammer {
+    position: fixed; z-index: 1000; pointer-events: none;
+    font-size: 56px; line-height: 1; transform: translate(-50%,-50%);
+    animation: whack .3s ease-out forwards;
+  }
+  .star { position: fixed; pointer-events: none; z-index: 900; font-size: 30px; animation: floatUp .8s ease-out forwards; }
+  .mood { position: fixed; pointer-events: none; z-index: 950; font-size: 36px; animation: moodPop .7s ease-out forwards; }
+
+  #setup, #win {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(40,60,30,.4); z-index: 1100; flex-direction: column;
+  }
+  #setup.show, #win.show { display: flex; }
+  .panel {
+    background: #fff; border-radius: 28px; padding: 28px 26px; text-align: center;
+    box-shadow: 0 12px 44px rgba(0,0,0,.28); width: min(88vw, 420px);
+  }
+  .panel h2 { margin: 0 0 16px; color: #4a7a2f; font-size: 28px; }
+  .panel .row { margin: 14px 0; text-align: left; }
+  .panel .lab { font-size: 15px; color: #8a8a5f; margin-bottom: 6px; font-weight: 700; }
+  .panel .opts { display: flex; gap: 10px; }
+  .panel .opts button {
+    flex: 1; padding: 12px 0; font-size: 18px; font-weight: 700; border: 2px solid #e2e8d0;
+    background: #f7faef; color: #6a7a4f; border-radius: 16px; cursor: pointer; transition: all .15s;
+  }
+  .panel .opts button.on { background: #ff8fb3; border-color: #ff8fb3; color: #fff; }
+  .panel .go {
+    margin-top: 18px; width: 100%; padding: 16px 0; font-size: 24px; font-weight: 700;
+    border: none; border-radius: 999px; background: linear-gradient(90deg, #ff8fb3, #ffb86b);
+    color: #fff; cursor: pointer; box-shadow: 0 6px 16px rgba(255,143,179,.4);
+  }
+  .panel .go:active { transform: scale(.96); }
+  #win .big { font-size: 64px; }
+  #win p { color: #8a8a5f; font-size: 16px; margin: 4px 0 10px; }
+  #win .ghost-btn { margin-top: 10px; background: transparent; border: none; color: #b0a890; font-size: 16px; cursor: pointer; text-decoration: underline; }
+
+  .confetti { position: fixed; top: -20px; z-index: 1200; pointer-events: none; animation: fall linear forwards; }
+
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-9px)} 40%{transform:translateX(9px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
+  @keyframes whack {
+    0% { transform: translate(-50%,-50%) rotate(-65deg) scale(.6); }
+    50% { transform: translate(-50%,-50%) rotate(14deg) scale(1.2); }
+    100% { transform: translate(-50%,-50%) rotate(0) scale(1); opacity: 0; }
+  }
+  @keyframes floatUp { 0%{transform:translateY(0) scale(1); opacity:1} 100%{transform:translateY(-90px) scale(1.4); opacity:0} }
+  @keyframes moodPop { 0%{transform:translateY(0) scale(.3); opacity:0} 25%{transform:translateY(-8px) scale(1.3); opacity:1} 60%{transform:translateY(-16px) scale(1); opacity:1} 100%{transform:translateY(-30px) scale(.9); opacity:0} }
+  @keyframes fall { to { transform: translateY(105vh) rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>打地鼠 🦫</h1>
+  <div id="hud">🦫 <span id="score">0</span> / <span id="target">20</span></div>
+  <div id="bar"><div id="fill"></div></div>
+</header>
+<div id="board"></div>
+
+<div id="setup">
+  <div class="panel">
+    <h2>打地鼠 🦫</h2>
+    <div class="row"><div class="lab">难度</div>
+      <div class="opts">
+        <button class="diff" data-d="easy">简单</button>
+        <button class="diff" data-d="normal">普通</button>
+        <button class="diff" data-d="hard">困难</button>
+      </div>
+    </div>
+    <div class="row"><div class="lab">目标分数</div>
+      <div class="opts">
+        <button class="goal" data-g="20">20</button>
+        <button class="goal" data-g="30">30</button>
+        <button class="goal" data-g="50">50</button>
+      </div>
+    </div>
+    <button class="go" id="start">开始游戏</button>
+  </div>
+</div>
+
+<div id="win">
+  <div class="panel">
+    <div class="big">🎉</div>
+    <h2>你真棒！👏</h2>
+    <p id="win-msg"></p>
+    <button class="go" id="again">再来一局</button>
+    <button class="ghost-btn" id="change">换个难度</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var DIFFICULTY = {
+    easy:   { maxConcurrent: 1, baseInterval: 1900, minInterval: 1900, speedStep: 0,  lifetime: 2100, bunnyChance: 0 },
+    normal: { maxConcurrent: 2, baseInterval: 1600, minInterval: 1050, speedStep: 14, lifetime: 1700, bunnyChance: 0 },
+    hard:   { maxConcurrent: 2, baseInterval: 1500, minInterval: 950,  speedStep: 16, lifetime: 1600, bunnyChance: 0.18 }
+  };
+
+  var MARMOT = '🦫', BUNNY = '🐰';
+
+  var audioCtx = null;
+  function ac() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(type, f0, f1, t0, dur, vol) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + t0;
+    var o = c.createOscillator(); var g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noiseHit(freq, t0, dur, vol) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + t0;
+    var buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    var src = c.createBufferSource(); src.buffer = buf;
+    var g = c.createGain(); var f = c.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 0.8;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(c.destination);
+    src.start(t);
+  }
+
+  function popUpSound() { tone('sine', 300, 620, 0, 0.08, 0.16); }
+  function thump() { tone('sine', 220, 85, 0, 0.13, 0.4); }
+  function marmotSqueak() {
+    tone('sine', 700, 1500, 0, 0.15, 0.22);
+    tone('sine', 700, 1500, 0.18, 0.15, 0.18);
+  }
+  function rejectSound() {
+    [0, 0.22].forEach(function (off) {
+      tone('sine', 340, 200, off, 0.18, 0.22);
+      tone('sawtooth', 170, 120, off, 0.18, 0.05);
+    });
+  }
+  function winMelody() {
+    [523, 659, 784, 1047, 784, 1047].forEach(function (f, i) { tone('sine', f, null, i * 0.13, 0.22, 0.2); });
+  }
+  function applause() {
+    for (var i = 0; i < 26; i++) noiseHit(1600 + Math.random() * 600, Math.random() * 1.8, 0.03, 0.22);
+  }
+  function sayGreat() {
+    try {
+      if (window.speechSynthesis) {
+        var u = new SpeechSynthesisUtterance('你真棒');
+        u.lang = 'zh-CN'; u.rate = 0.9; u.pitch = 1.1;
+        window.speechSynthesis.speak(u);
+      }
+    } catch (e) {}
+  }
+
+  var board = document.getElementById('board');
+  var scoreEl = document.getElementById('score');
+  var targetEl = document.getElementById('target');
+  var fillEl = document.getElementById('fill');
+  var setupEl = document.getElementById('setup');
+  var winEl = document.getElementById('win');
+  var winMsgEl = document.getElementById('win-msg');
+
+  var state = 'setup';
+  var curDiff = 'normal';
+  var target = 20;
+  var score = 0;
+  var holes = [];
+  var spawnTimer = null;
+
+  function buildBoard() {
+    for (var i = 0; i < 9; i++) {
+      var hole = document.createElement('div');
+      hole.className = 'hole'; hole.dataset.h = i;
+      hole.innerHTML = '<div class="critter"></div><div class="dark"></div>';
+      hole.addEventListener('pointerdown', function (e) { onHoleTap(+e.currentTarget.dataset.h, e); });
+      board.appendChild(hole);
+      holes.push({ el: hole, critter: hole.querySelector('.critter'), state: 'idle', type: null, timer: null });
+    }
+  }
+
+  function onHoleTap(h, e) {
+    if (state !== 'playing') return;
+    var hole = holes[h];
+    if (hole.state !== 'up') return;
+    if (e.cancelable) e.preventDefault();
+    spawnHammer(e.clientX, e.clientY);
+    if (hole.type === 'bunny') hitBunny(hole);
+    else hitMarmot(hole);
+  }
+
+  function hitMarmot(hole) {
+    hole.state = 'hit';
+    clearTimeout(hole.timer);
+    hole.critter.classList.remove('up');
+    hole.critter.classList.add('hit-anim');
+    hole.critter.textContent = '😵';
+    thump(); marmotSqueak();
+    spawnStar(hole);
+    score++;
+    updateHud();
+    setTimeout(function () { resetCritter(hole); }, 420);
+    if (score >= target) setTimeout(win, 500);
+  }
+
+  function hitBunny(hole) {
+    hole.state = 'hit';
+    clearTimeout(hole.timer);
+    hole.critter.classList.remove('up');
+    hole.critter.classList.add('angry', 'shake');
+    rejectSound();
+    spawnMood(hole, '😖');
+    setTimeout(function () { resetCritter(hole); }, 560);
+  }
+
+  function resetCritter(hole) {
+    hole.state = 'idle'; hole.type = null;
+    hole.critter.className = 'critter';
+    hole.critter.textContent = '';
+  }
+
+  function spawnHammer(x, y) {
+    var h = document.createElement('div');
+    h.className = 'hammer'; h.textContent = '🔨';
+    h.style.left = x + 'px'; h.style.top = y + 'px';
+    document.body.appendChild(h);
+    setTimeout(function () { h.remove(); }, 320);
+  }
+  function spawnStar(hole) {
+    var r = hole.el.getBoundingClientRect();
+    var s = document.createElement('div');
+    s.className = 'star'; s.textContent = '⭐';
+    s.style.left = (r.left + r.width / 2 - 15) + 'px';
+    s.style.top = (r.top + r.height * 0.2) + 'px';
+    document.body.appendChild(s);
+    setTimeout(function () { s.remove(); }, 800);
+  }
+  function spawnMood(hole, emoji) {
+    var r = hole.el.getBoundingClientRect();
+    var m = document.createElement('div');
+    m.className = 'mood'; m.textContent = emoji;
+    m.style.left = (r.left + r.width / 2 - 18) + 'px';
+    m.style.top = (r.top - 14) + 'px';
+    document.body.appendChild(m);
+    setTimeout(function () { m.remove(); }, 700);
+  }
+
+  function updateHud() {
+    scoreEl.textContent = score;
+    targetEl.textContent = target;
+    fillEl.style.width = Math.min(100, score / target * 100) + '%';
+  }
+
+  function scheduleSpawn() {
+    var d = DIFFICULTY[curDiff];
+    var interval = Math.max(d.minInterval, d.baseInterval - score * d.speedStep);
+    spawnTimer = setTimeout(function () {
+      if (state !== 'playing') return;
+      trySpawn();
+      scheduleSpawn();
+    }, interval);
+  }
+  function trySpawn() {
+    var d = DIFFICULTY[curDiff];
+    var active = holes.filter(function (h) { return h.state === 'up'; }).length;
+    if (active >= d.maxConcurrent) return;
+    var empty = holes.filter(function (h) { return h.state === 'idle'; });
+    if (!empty.length) return;
+    var hole = empty[Math.floor(Math.random() * empty.length)];
+    spawnIn(hole, d);
+  }
+  function spawnIn(hole, d) {
+    var isBunny = Math.random() < d.bunnyChance;
+    hole.type = isBunny ? 'bunny' : 'marmot';
+    hole.state = 'up';
+    hole.critter.textContent = isBunny ? BUNNY : MARMOT;
+    hole.critter.classList.add('up');
+    popUpSound();
+    hole.timer = setTimeout(function () {
+      if (hole.state === 'up') { hole.critter.classList.remove('up'); resetCritter(hole); }
+    }, d.lifetime);
+  }
+
+  function startGame() {
+    score = 0;
+    holes.forEach(resetCritter);
+    updateHud();
+    state = 'playing';
+    setupEl.classList.remove('show');
+    winEl.classList.remove('show');
+    clearTimeout(spawnTimer);
+    scheduleSpawn();
+  }
+
+  function win() {
+    if (state !== 'playing') return;
+    state = 'won';
+    clearTimeout(spawnTimer);
+    winMsgEl.textContent = '你打中了 ' + score + ' 个土拨鼠！';
+    winEl.classList.add('show');
+    winMelody(); applause(); sayGreat();
+    confetti();
+  }
+  function confetti() {
+    var colors = ['#ff6b9d', '#ffb6d0', '#ffd166', '#6bd5ff', '#8fff9b', '#c6a0ff'];
+    for (var i = 0; i < 60; i++) {
+      var c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = (Math.random() * 100) + 'vw';
+      c.style.width = (6 + Math.random() * 8) + 'px';
+      c.style.height = (6 + Math.random() * 8) + 'px';
+      c.style.background = colors[Math.floor(Math.random() * colors.length)];
+      c.style.animationDuration = (2 + Math.random() * 2) + 's';
+      c.style.animationDelay = (Math.random() * 0.5) + 's';
+      document.body.appendChild(c);
+      setTimeout(function () { c.remove(); }, 4500);
+    }
+  }
+
+  // --- 设置面板交互 ---
+  var diffBtns = Array.prototype.slice.call(document.querySelectorAll('.diff'));
+  var goalBtns = Array.prototype.slice.call(document.querySelectorAll('.goal'));
+  function setDiff(d) {
+    curDiff = d;
+    diffBtns.forEach(function (b) { b.classList.toggle('on', b.dataset.d === d); });
+  }
+  function setGoal(g) {
+    target = g;
+    goalBtns.forEach(function (b) { b.classList.toggle('on', b.dataset.g === String(g)); });
+    targetEl.textContent = target;
+  }
+  diffBtns.forEach(function (b) { b.addEventListener('click', function () { setDiff(b.dataset.d); }); });
+  goalBtns.forEach(function (b) { b.addEventListener('click', function () { setGoal(+b.dataset.g); }); });
+  document.getElementById('start').addEventListener('click', startGame);
+  document.getElementById('again').addEventListener('click', startGame);
+  document.getElementById('change').addEventListener('click', function () {
+    state = 'setup';
+    winEl.classList.remove('show');
+    setupEl.classList.add('show');
+  });
+
+  buildBoard();
+  setDiff('normal');
+  setGoal(20);
+  setupEl.classList.add('show');
+})();
+</script>
+</body>
+</html>
