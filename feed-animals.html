@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="喂小动物">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>喂小动物</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(180deg, #ffeef5 0%, #fff7ec 100%);
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;
+    display: flex; flex-direction: column;
+    height: 100dvh;
+    padding: calc(env(safe-area-inset-top)) calc(env(safe-area-inset-right)) calc(env(safe-area-inset-bottom)) calc(env(safe-area-inset-left));
+  }
+  header { text-align: center; padding: 10px 0 2px; }
+  header h1 { margin: 0; font-size: clamp(20px, 4vmin, 30px); color: #f26d9c; font-weight: 700; }
+  #stars { margin-top: 4px; font-size: clamp(18px, 3.4vmin, 26px); letter-spacing: 4px; }
+  #stars .star { opacity: 0.22; display: inline-block; transition: opacity .3s; }
+  #stars .star.on { opacity: 1; animation: pop .4s; }
+
+  #animals {
+    flex: 1; display: grid; gap: 8px;
+    padding: 8px 12px; align-content: center;
+  }
+  #tray {
+    padding: 6px 12px calc(8px + env(safe-area-inset-bottom));
+    display: grid; gap: 8px;
+    grid-template-columns: repeat(6, 1fr);
+    flex-shrink: 0;
+  }
+  @media (orientation: portrait) {
+    #animals { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (orientation: landscape) {
+    #animals { grid-template-columns: repeat(6, 1fr); }
+  }
+
+  .animal {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #fff; border-radius: 22px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.06);
+    padding: 6px 2px; min-height: 0; cursor: pointer;
+  }
+  .animal .emoji { font-size: clamp(56px, 12vmin, 110px); line-height: 1; animation: float 3s ease-in-out infinite; }
+  .animal .name { font-size: clamp(12px, 2.6vmin, 18px); color: #a3567e; margin-top: 2px; }
+  .animal.eating .emoji { animation: chew .5s ease-in-out infinite; }
+  .animal.happy .emoji { animation: hop .8s ease-out; }
+  .animal.shake .emoji { animation: shake .5s ease-in-out; }
+  .animal.fed::after {
+    content: "😋"; position: absolute; top: 2px; right: 6px;
+    font-size: clamp(18px, 3vmin, 28px); animation: pop .4s;
+  }
+
+  .food {
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(44px, 8vmin, 76px); line-height: 1;
+    background: #fff; border-radius: 20px; padding: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    cursor: pointer; transition: transform .15s, opacity .35s, box-shadow .15s;
+  }
+  .food.selected { transform: scale(1.15); box-shadow: 0 0 0 4px #ffb6d0; }
+  .food.source { opacity: .35; }
+  .food.gone { opacity: 0; transform: scale(.2); pointer-events: none; }
+
+  .ghost { position: fixed; pointer-events: none; z-index: 1000; transform: scale(1.25); line-height: 1; }
+  .heart { position: fixed; pointer-events: none; z-index: 900; font-size: 30px; animation: floatUp 1s ease-out forwards; }
+
+  #toast {
+    position: fixed; left: 50%; top: 55%; transform: translate(-50%,-50%);
+    background: rgba(0,0,0,.65); color: #fff; padding: 12px 20px; border-radius: 16px;
+    font-size: 16px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 1100; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  #win {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.35); z-index: 1200; flex-direction: column;
+  }
+  #win.show { display: flex; }
+  #win .card { background: #fff; border-radius: 24px; padding: 30px 36px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+  #win .big { font-size: 60px; }
+  #win h2 { margin: 10px 0 6px; color: #f26d9c; font-size: 24px; }
+  #win button { margin-top: 14px; font-size: 22px; padding: 12px 32px; border: none; border-radius: 999px; background: #ff8fb3; color: #fff; cursor: pointer; }
+  #win button:active { transform: scale(.96); }
+
+  .confetti { position: fixed; top: -20px; z-index: 1300; pointer-events: none; animation: fall linear forwards; }
+
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+  @keyframes chew { 0%,100%{transform:scale(1)} 25%{transform:scale(1.15,.85)} 55%{transform:scale(.88,1.12)} 80%{transform:scale(1.1,.9)} }
+  @keyframes hop { 0%{transform:translateY(0)} 30%{transform:translateY(-22px)} 55%{transform:translateY(0)} 75%{transform:translateY(-10px)} 100%{transform:translateY(0)} }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-9px)} 40%{transform:translateX(9px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
+  @keyframes pop { 0%{transform:scale(.3)} 60%{transform:scale(1.4)} 100%{transform:scale(1)} }
+  @keyframes floatUp { 0%{transform:translateY(0) scale(1); opacity:1} 100%{transform:translateY(-90px) scale(1.4); opacity:0} }
+  @keyframes fall { to { transform: translateY(105vh) rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>喂小动物 🍽️</h1>
+  <div id="stars"></div>
+</header>
+<div id="animals"></div>
+<div id="tray"></div>
+<div id="toast"></div>
+<div id="win"><div class="card"><div class="big">🎉</div><h2>全部喂饱啦！</h2><button id="again">再来一局</button></div></div>
+
+<script>
+(function () {
+  var ANIMALS = [
+    { e: '🐰', food: '🥕', name: '兔子', eat: 'crunch' },
+    { e: '🐶', food: '🦴', name: '小狗', eat: 'dog' },
+    { e: '🐱', food: '🐟', name: '小猫', eat: 'cat' },
+    { e: '🐵', food: '🍌', name: '猴子', eat: 'monkey' },
+    { e: '🐼', food: '🎋', name: '熊猫', eat: 'crunch' },
+    { e: '🐤', food: '🌽', name: '小鸡', eat: 'chick' }
+  ];
+
+  var audioCtx = null;
+  function ac() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function tone(type, f0, f1, t0, dur, vol) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + t0;
+    var o = c.createOscillator();
+    var g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  function noiseCrunch() {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime;
+    var seg = 0.05, gap = 0.05, n = 3;
+    for (var k = 0; k < n; k++) {
+      var len = seg;
+      var buf = c.createBuffer(1, Math.floor(c.sampleRate * len), c.sampleRate);
+      var d = buf.getChannelData(0);
+      for (var i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+      var src = c.createBufferSource();
+      src.buffer = buf;
+      var g = c.createGain();
+      var f = c.createBiquadFilter();
+      f.type = 'highpass'; f.frequency.value = 900;
+      var st = t + k * (seg + gap);
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(0.3, st + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + seg);
+      src.connect(f).connect(g).connect(c.destination);
+      src.start(st);
+    }
+  }
+
+  var EAT_SOUNDS = {
+    crunch: function () { noiseCrunch(); },
+    dog: function () { tone('sawtooth', 320, 180, 0, 0.13, 0.22); tone('sawtooth', 320, 180, 0.18, 0.13, 0.22); },
+    cat: function () { tone('triangle', 560, 760, 0, 0.12, 0.3); tone('triangle', 760, 420, 0.12, 0.24, 0.28); },
+    monkey: function () { tone('square', 900, 1400, 0, 0.06, 0.12); tone('square', 900, 1400, 0.09, 0.06, 0.12); tone('square', 900, 1400, 0.18, 0.06, 0.12); },
+    chick: function () { tone('triangle', 1800, 2400, 0, 0.05, 0.18); tone('triangle', 1800, 2400, 0.12, 0.05, 0.18); tone('triangle', 1800, 2400, 0.24, 0.05, 0.18); }
+  };
+
+  function goodSound() {
+    tone('sine', 523, null, 0, 0.1, 0.18);
+    tone('sine', 659, null, 0.07, 0.1, 0.18);
+    tone('sine', 784, null, 0.14, 0.14, 0.18);
+  }
+  function badSound() { tone('sine', 320, 180, 0, 0.28, 0.2); }
+  function winSound() {
+    [523, 659, 784, 1047, 784, 1047].forEach(function (f, i) { tone('sine', f, null, i * 0.13, 0.22, 0.2); });
+  }
+
+  var animalsEl = document.getElementById('animals');
+  var trayEl = document.getElementById('tray');
+  var starsEl = document.getElementById('stars');
+  var toastEl = document.getElementById('toast');
+  var winEl = document.getElementById('win');
+
+  var fed = new Array(6).fill(false);
+  var score = 0;
+  var selectedFood = -1;
+  var ghost = null;
+  var drag = null;
+
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+  }
+
+  for (var s = 0; s < 6; s++) {
+    var star = document.createElement('span');
+    star.className = 'star'; star.textContent = '⭐';
+    starsEl.appendChild(star);
+  }
+  var starEls = Array.prototype.slice.call(starsEl.children);
+
+  ANIMALS.forEach(function (a, i) {
+    var el = document.createElement('div');
+    el.className = 'animal'; el.dataset.i = i;
+    el.innerHTML = '<div class="emoji">' + a.e + '</div><div class="name">' + a.name + '</div>';
+    el.addEventListener('click', function () { onAnimalClick(i); });
+    animalsEl.appendChild(el);
+  });
+  var animalEls = Array.prototype.slice.call(animalsEl.querySelectorAll('.animal'));
+
+  var foodEls = new Array(6);
+  var order = ANIMALS.map(function (_, i) { return i; });
+  shuffle(order);
+  order.forEach(function (i) {
+    var el = document.createElement('div');
+    el.className = 'food'; el.dataset.i = i;
+    el.textContent = ANIMALS[i].food;
+    el.addEventListener('pointerdown', function (e) { onFoodDown(e, i); });
+    foodEls[i] = el;
+    trayEl.appendChild(el);
+  });
+
+  function onFoodDown(e, idx) {
+    if (fed[idx]) return;
+    if (e.cancelable) e.preventDefault();
+    ac();
+    setSelected(idx);
+    var foodEl = foodEls[idx];
+    ghost = document.createElement('div');
+    ghost.className = 'ghost';
+    ghost.textContent = ANIMALS[idx].food;
+    ghost.style.fontSize = '70px';
+    document.body.appendChild(ghost);
+    positionGhost(e.clientX, e.clientY);
+    foodEl.classList.add('source');
+    drag = { idx: idx, startX: e.clientX, startY: e.clientY, moved: false };
+  }
+
+  function positionGhost(x, y) {
+    if (!ghost) return;
+    ghost.style.left = (x - 30) + 'px';
+    ghost.style.top = (y - 30) + 'px';
+  }
+
+  function onPointerMove(e) {
+    if (!drag) return;
+    var dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+    if (!drag.moved && Math.sqrt(dx * dx + dy * dy) > 10) drag.moved = true;
+    if (drag.moved) positionGhost(e.clientX, e.clientY);
+  }
+
+  function onPointerUp(e) {
+    if (!drag) return;
+    var idx = drag.idx, moved = drag.moved;
+    drag = null;
+    foodEls[idx].classList.remove('source');
+    if (ghost) { ghost.remove(); ghost = null; }
+    if (moved) {
+      var ai = hitTestAnimal(e.clientX, e.clientY);
+      if (ai >= 0) tryFeed(ai, idx);
+      clearSelected();
+    }
+  }
+
+  function onAnimalClick(i) {
+    if (fed[i]) return;
+    if (selectedFood < 0) {
+      showToast('先点一个食物哦 🍎');
+      return;
+    }
+    tryFeed(i, selectedFood);
+    clearSelected();
+  }
+
+  function setSelected(idx) {
+    if (selectedFood >= 0 && selectedFood !== idx) foodEls[selectedFood].classList.remove('selected');
+    selectedFood = idx;
+    foodEls[idx].classList.add('selected');
+  }
+  function clearSelected() {
+    if (selectedFood >= 0) {
+      foodEls[selectedFood].classList.remove('selected');
+      selectedFood = -1;
+    }
+  }
+
+  function hitTestAnimal(x, y) {
+    for (var i = 0; i < animalEls.length; i++) {
+      if (fed[i]) continue;
+      var r = animalEls[i].getBoundingClientRect();
+      var pad = 16;
+      if (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad) return i;
+    }
+    return -1;
+  }
+
+  function tryFeed(ai, fi) {
+    if (fed[fi]) return false;
+    if (fi === ai) { feedSuccess(ai); return true; }
+    feedFail(ai); return false;
+  }
+
+  function feedSuccess(ai) {
+    fed[ai] = true;
+    score++;
+    var aEl = animalEls[ai];
+    var fEl = foodEls[ai];
+    aEl.classList.add('eating');
+    if (EAT_SOUNDS[ANIMALS[ai].eat]) EAT_SOUNDS[ANIMALS[ai].eat]();
+    setTimeout(goodSound, 260);
+    fEl.classList.add('gone');
+    spawnHeart(aEl);
+    starEls[ai].classList.add('on');
+    setTimeout(function () {
+      aEl.classList.remove('eating');
+      aEl.classList.add('happy', 'fed');
+    }, 620);
+    setTimeout(function () { aEl.classList.remove('happy'); }, 1500);
+    if (score === 6) setTimeout(win, 1400);
+  }
+
+  function feedFail(ai) {
+    var aEl = animalEls[ai];
+    aEl.classList.remove('shake');
+    void aEl.offsetWidth;
+    aEl.classList.add('shake');
+    badSound();
+    setTimeout(function () { aEl.classList.remove('shake'); }, 520);
+  }
+
+  function spawnHeart(aEl) {
+    var r = aEl.getBoundingClientRect();
+    var h = document.createElement('div');
+    h.className = 'heart'; h.textContent = '💖';
+    h.style.left = (r.left + r.width / 2 - 15) + 'px';
+    h.style.top = r.top + 'px';
+    document.body.appendChild(h);
+    setTimeout(function () { h.remove(); }, 1000);
+  }
+
+  var toastTimer = null;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+
+  function win() {
+    winSound();
+    winEl.classList.add('show');
+    confetti();
+  }
+  function confetti() {
+    var colors = ['#ff6b9d', '#ffb6d0', '#ffd166', '#6bd5ff', '#8fff9b', '#c6a0ff'];
+    for (var i = 0; i < 60; i++) {
+      var c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = (Math.random() * 100) + 'vw';
+      c.style.width = (6 + Math.random() * 8) + 'px';
+      c.style.height = (6 + Math.random() * 8) + 'px';
+      c.style.background = colors[Math.floor(Math.random() * colors.length)];
+      c.style.animationDuration = (2 + Math.random() * 2) + 's';
+      c.style.animationDelay = (Math.random() * 0.5) + 's';
+      document.body.appendChild(c);
+      setTimeout(function () { c.remove(); }, 4500);
+    }
+  }
+
+  document.getElementById('again').addEventListener('click', reset);
+
+  function reset() {
+    fed = new Array(6).fill(false);
+    score = 0;
+    clearSelected();
+    animalEls.forEach(function (el) { el.className = 'animal'; });
+    foodEls.forEach(function (el) { el.classList.remove('gone', 'source', 'selected'); });
+    starEls.forEach(function (el) { el.classList.remove('on'); });
+    winEl.classList.remove('show');
+    var order2 = ANIMALS.map(function (_, i) { return i; });
+    shuffle(order2);
+    order2.forEach(function (i) { trayEl.appendChild(foodEls[i]); });
+  }
+
+  window.addEventListener('pointermove', onPointerMove, { passive: true });
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+})();
+</script>
+</body>
+</html>
