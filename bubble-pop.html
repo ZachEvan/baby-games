@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>泡泡戳戳乐</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(180deg, #dff3ff 0%, #fdeefb 45%, #e8f7e4 100%);
+  }
+  #game { display: block; position: fixed; inset: 0; touch-action: none; }
+
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding-top: calc(var(--safe-top) + 14px);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #hud .bubble-icon {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #ffffff 0%, #ffd1e3 40%, #ff9ec7 100%);
+    box-shadow: inset -2px -3px 5px rgba(255,120,170,.5);
+  }
+  #score {
+    font-size: 44px;
+    font-weight: 700;
+    color: #5a4a86;
+    line-height: 1;
+    text-shadow: 0 2px 0 rgba(255,255,255,.6);
+    transform-origin: center;
+    transition: transform .12s ease;
+  }
+  #score.pop { transform: scale(1.28); }
+  #hint {
+    position: fixed;
+    bottom: calc(var(--safe-bottom) + 22px);
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 20px;
+    color: #8a7bb8;
+    pointer-events: none;
+    z-index: 10;
+    animation: bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); opacity: .85; }
+    50% { transform: translateY(-6px); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="bubble-icon"></div>
+  <div id="score">0</div>
+</div>
+<div id="hint">戳一戳泡泡吧</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const scoreEl = document.getElementById("score");
+  const hintEl = document.getElementById("hint");
+
+  let W = 0, H = 0, DPR = 1;
+  let bubbles = [];
+  let particles = [];
+  let ripples = [];
+  let animals = [];
+  let score = 0;
+  let audioCtx = null;
+
+  // ---------- 尺寸 ----------
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // 把越界的泡泡拉回可视区
+    for (const b of bubbles) {
+      b.x = Math.min(Math.max(b.x, b.r), W - b.r);
+      b.y = Math.min(Math.max(b.y, b.r), H - b.r);
+    }
+    ensureBubbleCount();
+  }
+  window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", function () { setTimeout(resize, 80); });
+
+  // ---------- 音效（Web Audio 合成，首次触摸才启动） ----------
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
+
+  function popSound(r) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    // 大泡泡低频、小泡泡高频
+    const base = 700 - Math.min(r, 120) * 3.5; // ~280Hz ~ 700Hz
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(base, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(base * 0.35, 60), t + 0.13);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.5, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.18);
+  }
+
+  // ---------- 动物 ----------
+  const ANIMALS = [
+    { e: "🐱", key: "cat" },
+    { e: "🐶", key: "dog" },
+    { e: "🦆", key: "duck" },
+    { e: "🐤", key: "chick" },
+    { e: "🐷", key: "pig" },
+    { e: "🐸", key: "frog" }
+  ];
+
+  function catSound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(360, t);
+    osc.frequency.linearRampToValueAtTime(820, t + 0.16);
+    osc.frequency.linearRampToValueAtTime(380, t + 0.42);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.4, t + 0.05);
+    gain.gain.setValueAtTime(0.35, t + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.52);
+  }
+
+  function dogSound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    bark(t);
+    bark(t + 0.22);
+    function bark(time) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(300, time);
+      osc.frequency.exponentialRampToValueAtTime(170, time + 0.09);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.32, time + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.11);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(time);
+      osc.stop(time + 0.12);
+    }
+  }
+
+  function duckSound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const lfo = audioCtx.createOscillator();
+    const lfoGain = audioCtx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(260, t);
+    lfo.frequency.value = 28;
+    lfoGain.gain.value = 35;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.3, t + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.32);
+    lfo.start(t);
+    lfo.stop(t + 0.32);
+  }
+
+  function chickSound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const time = t + i * 0.09;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1350, time);
+      osc.frequency.linearRampToValueAtTime(1050, time + 0.06);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.25, time + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(time);
+      osc.stop(time + 0.08);
+    }
+  }
+
+  function pigSound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(140, t + 0.18);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.3, t + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  }
+
+  function frogSound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    croak(t);
+    croak(t + 0.18);
+    function croak(time) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(160, time);
+      osc.frequency.exponentialRampToValueAtTime(90, time + 0.07);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.28, time + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.09);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(time);
+      osc.stop(time + 0.1);
+    }
+  }
+
+  function playAnimalSound(key) {
+    if (key === "cat") catSound();
+    else if (key === "dog") dogSound();
+    else if (key === "duck") duckSound();
+    else if (key === "chick") chickSound();
+    else if (key === "pig") pigSound();
+    else if (key === "frog") frogSound();
+  }
+
+  function spawnAnimal(x, y) {
+    const a = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+    animals.push({ emoji: a.e, x: x, y: y, born: performance.now() });
+    setTimeout(function () { playAnimalSound(a.key); }, 60);
+  }
+
+  function happySound() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const notes = [523.25, 659.25, 783.99];
+    notes.forEach(function (f, i) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = f;
+      const st = t + i * 0.09;
+      gain.gain.setValueAtTime(0.0001, st);
+      gain.gain.exponentialRampToValueAtTime(0.28, st + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, st + 0.28);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(st);
+      osc.stop(st + 0.3);
+    });
+  }
+
+  // ---------- 泡泡 ----------
+  function randomHue() { return Math.floor(Math.random() * 360); }
+
+  function makeBubble(atEdge) {
+    const r = 38 + Math.random() * 52; // 直径约 76~180px，小手好点
+    const b = {
+      r: r,
+      x: atEdge ? (Math.random() < 0.5 ? -r : W + r) : r + Math.random() * (W - r * 2),
+      y: (H * 0.18) + Math.random() * (H * 0.8 - r * 2),
+      vx: (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.55),
+      vy: (Math.random() < 0.5 ? -1 : 1) * (0.2 + Math.random() * 0.45),
+      hue: randomHue(),
+      wobble: Math.random() * Math.PI * 2,
+      wobbleSpeed: 0.008 + Math.random() * 0.02,
+      scale: 0,
+      born: performance.now()
+    };
+    return b;
+  }
+
+  function ensureBubbleCount() {
+    const area = W * H;
+    const target = Math.max(8, Math.min(16, Math.round(area / 90000)));
+    while (bubbles.length < target) {
+      bubbles.push(makeBubble(true));
+    }
+  }
+
+  // ---------- 粒子 / 涟漪 ----------
+  function burst(x, y, hue) {
+    const n = 10 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.5 + Math.random() * 4.5;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 1,
+        r: 3 + Math.random() * 5,
+        hue: hue,
+        light: 60 + Math.random() * 20
+      });
+    }
+    ripples.push({ x: x, y: y, r: 8, max: 60 + Math.random() * 30, life: 1 });
+  }
+
+  // ---------- 交互 ----------
+  function onDown(e) {
+    ensureAudio();
+    e.preventDefault();
+    const pt = getPoint(e);
+    if (!pt) return;
+    // 从最上层（最大）泡泡开始判断，更贴近直觉
+    let hit = null;
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const b = bubbles[i];
+      const dx = b.x - pt.x, dy = b.y - pt.y;
+      if (dx * dx + dy * dy <= (b.r * 0.95) * (b.r * 0.95)) { hit = i; break; }
+    }
+    if (hit === null) return;
+
+    const b = bubbles[hit];
+    bubbles.splice(hit, 1);
+    burst(b.x, b.y, b.hue);
+    popSound(b.r);
+    spawnAnimal(b.x, b.y);
+
+    score++;
+    scoreEl.textContent = score;
+    if (hintEl) { hintEl.style.opacity = "0"; hintEl.style.transition = "opacity .6s"; }
+    scoreEl.classList.remove("pop");
+    void scoreEl.offsetWidth;
+    scoreEl.classList.add("pop");
+    setTimeout(function () { scoreEl.classList.remove("pop"); }, 130);
+
+    if (score % 5 === 0) happySound(); // 每戳 5 个放一小段鼓励音
+
+    // 补充一个新泡泡
+    setTimeout(function () { bubbles.push(makeBubble(true)); }, 220);
+  }
+
+  function getPoint(e) {
+    if (e.touches && e.touches.length) {
+      const t = e.touches[0];
+      return { x: t.clientX, y: t.clientY };
+    }
+    if (e.clientX !== undefined) return { x: e.clientX, y: e.clientY };
+    return null;
+  }
+
+  canvas.addEventListener("pointerdown", onDown, { passive: false });
+
+  // ---------- 渲染 ----------
+  function drawBubble(b) {
+    const sx = b.x + Math.sin(b.wobble) * 6;
+    const sy = b.y + Math.cos(b.wobble * 1.3) * 6;
+    const r = b.r * b.scale;
+    const h = b.hue;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // 外圈淡淡的虹彩描边
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = "hsla(" + h + ", 85%, 82%, .35)";
+    ctx.fill();
+
+    // 玻璃主体
+    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.05, 0, 0, r);
+    g.addColorStop(0, "hsla(" + h + ", 90%, 95%, .95)");
+    g.addColorStop(0.35, "hsla(" + h + ", 85%, 80%, .6)");
+    g.addColorStop(1, "hsla(" + h + ", 80%, 70%, .18)");
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    // 高光点
+    ctx.beginPath();
+    ctx.arc(-r * 0.32, -r * 0.38, r * 0.16, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,.9)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(r * 0.28, r * 0.32, r * 0.08, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,.55)";
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fillStyle = "hsla(" + p.hue + ", 90%, " + p.light + "%, " + p.life + ")";
+      ctx.fill();
+    }
+    for (const rp of ripples) {
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255," + (rp.life * 0.8) + ")";
+      ctx.lineWidth = 3 * rp.life;
+      ctx.stroke();
+    }
+  }
+
+  function drawAnimals() {
+    for (const a of animals) {
+      const scale = easeOutBack(Math.min(1, a.age / 300));
+      ctx.save();
+      ctx.globalAlpha = a.life;
+      ctx.translate(a.x, a.y);
+      ctx.rotate(Math.sin(a.age / 180) * 0.14);
+      ctx.scale(scale, scale);
+      ctx.font = "84px serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(a.emoji, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function update() {
+    for (const b of bubbles) {
+      // 入场缩放
+      const age = performance.now() - b.born;
+      b.scale = Math.min(1, age / 420);
+      b.scale = b.scale < 1 ? easeOutBack(b.scale) : 1;
+
+      b.wobble += b.wobbleSpeed;
+      b.x += b.vx;
+      b.y += b.vy;
+      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
+      if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); }
+      if (b.y < b.r + H * 0.14) { b.y = b.r + H * 0.14; b.vy = Math.abs(b.vy); }
+      if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.abs(b.vy); }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.97; p.vy *= 0.97;
+      p.life -= 0.022;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.r += 3.2;
+      rp.life -= 0.05;
+      if (rp.life <= 0) ripples.splice(i, 1);
+    }
+    for (let i = animals.length - 1; i >= 0; i--) {
+      const a = animals[i];
+      a.age = performance.now() - a.born;
+      a.y -= 0.5;
+      a.life = 1 - a.age / 1500;
+      if (a.life <= 0) animals.splice(i, 1);
+    }
+  }
+
+  function easeOutBack(t) {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  function loop() {
+    update();
+    ctx.clearRect(0, 0, W, H);
+    for (const b of bubbles) drawBubble(b);
+    drawParticles();
+    drawAnimals();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 启动 ----------
+  resize();
+  loop();
+})();
+</script>
+</body>
+</html>

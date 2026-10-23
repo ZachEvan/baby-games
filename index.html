@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>宝宝小游戏</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(180deg, #dff3ff 0%, #fdeefb 50%, #e8f7e4 100%);
+  }
+  .wrap {
+    height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 30px;
+    padding: calc(var(--safe-top) + 20px) 24px calc(var(--safe-bottom) + 20px);
+  }
+  h1 {
+    font-size: 40px; font-weight: 700; color: #5a4a86;
+    letter-spacing: 3px; text-shadow: 0 2px 0 rgba(255,255,255,.6);
+  }
+  .cards {
+    width: 100%; max-width: 560px;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .card {
+    display: flex; align-items: center; gap: 22px;
+    text-decoration: none;
+    background: #ffffff;
+    border-radius: 26px;
+    padding: 28px 32px;
+    box-shadow: 0 10px 24px rgba(120,100,180,.18);
+    transition: transform .15s ease;
+  }
+  .card:active { transform: scale(.97); }
+  .card .emoji { font-size: 58px; line-height: 1; }
+  .card .txt { flex: 1; }
+  .card .name { font-size: 28px; font-weight: 700; color: #5a4a86; }
+  .card .desc { font-size: 15px; color: #9a8cc0; margin-top: 4px; }
+  .card .arrow { font-size: 26px; color: #c9bfe0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>宝宝小游戏</h1>
+  <div class="cards">
+    <a class="card" href="bubble-pop.html">
+      <div class="emoji">🫧</div>
+      <div class="txt">
+        <div class="name">泡泡戳戳乐</div>
+        <div class="desc">点泡泡 · 冒小动物</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+    <a class="card" href="memory-match.html">
+      <div class="emoji">🎴</div>
+      <div class="txt">
+        <div class="name">翻翻乐</div>
+        <div class="desc">找相同 · 练记忆</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+  </div>
+</div>
+</body>
+</html>
