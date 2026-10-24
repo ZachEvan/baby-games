@@ -34,8 +34,19 @@
     letter-spacing: 3px; text-shadow: 0 2px 0 rgba(255,255,255,.6);
   }
   .cards {
-    width: 100%; max-width: 560px;
+    width: 100%; max-width: 980px;
     display: flex; flex-direction: column; gap: 24px;
+  }
+  /* iPad 大屏适配：2 列网格铺满 */
+  @media (min-width: 768px) {
+    .wrap { gap: 48px; }
+    h1 { font-size: 64px; }
+    .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 32px; }
+    .card { padding: 40px 44px; border-radius: 32px; }
+    .card .emoji { font-size: 84px; }
+    .card .name { font-size: 38px; }
+    .card .desc { font-size: 20px; }
+    .card .arrow { font-size: 36px; }
   }
   .card {
     display: flex; align-items: center; gap: 22px;

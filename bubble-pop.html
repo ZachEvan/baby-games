@@ -47,7 +47,7 @@
     box-shadow: inset -2px -3px 5px rgba(255,120,170,.5);
   }
   #score {
-    font-size: 44px;
+    font-size: clamp(44px, 7vmin, 84px);
     font-weight: 700;
     color: #5a4a86;
     line-height: 1;
@@ -61,7 +61,7 @@
     bottom: calc(var(--safe-bottom) + 22px);
     left: 0; right: 0;
     text-align: center;
-    font-size: 20px;
+    font-size: clamp(20px, 3.4vmin, 36px);
     color: #8a7bb8;
     pointer-events: none;
     z-index: 10;
@@ -92,6 +92,7 @@
   const hintEl = document.getElementById("hint");
 
   let W = 0, H = 0, DPR = 1;
+  let SC = 1; // 大屏缩放系数：iPad 上泡泡/动物等比放大
   let bubbles = [];
   let particles = [];
   let ripples = [];
@@ -109,6 +110,7 @@
     canvas.style.width = W + "px";
     canvas.style.height = H + "px";
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    SC = Math.max(1, Math.min(1.9, Math.min(W, H) / 700));
     // 把越界的泡泡拉回可视区
     for (const b of bubbles) {
       b.x = Math.min(Math.max(b.x, b.r), W - b.r);
@@ -318,7 +320,7 @@
   function randomHue() { return Math.floor(Math.random() * 360); }
 
   function makeBubble(atEdge) {
-    const r = 38 + Math.random() * 52; // 直径约 76~180px，小手好点
+    const r = (38 + Math.random() * 52) * SC; // 直径约 76~180px × SC，小手好点
     const b = {
       r: r,
       x: atEdge ? (Math.random() < 0.5 ? -r : W + r) : r + Math.random() * (W - r * 2),
@@ -471,7 +473,7 @@
       ctx.translate(a.x, a.y);
       ctx.rotate(Math.sin(a.age / 180) * 0.14);
       ctx.scale(scale, scale);
-      ctx.font = "84px serif";
+      ctx.font = Math.round(84 * SC) + "px serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(a.emoji, 0, 0);

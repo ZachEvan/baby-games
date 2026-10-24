@@ -13,7 +13,7 @@
   html, body { margin: 0; height: 100%; overflow: hidden; }
   body {
     font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
-    background: linear-gradient(180deg, #d9f2c8 0%, #bde8a8 60%, #a8dc90 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #f4f6f1 100%);
     user-select: none; -webkit-user-select: none;
     touch-action: none;
     display: flex; flex-direction: column;
@@ -31,8 +31,8 @@
     flex: 1; display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
-    gap: 10px; padding: 10px 16px; align-content: center;
-    max-width: 720px; width: 100%; margin: 0 auto;
+    gap: 8px; padding: 8px 12px; align-content: center;
+    max-width: min(100%, 1600px); width: 100%; margin: 0 auto;
   }
   .hole {
     position: relative; overflow: hidden; cursor: pointer;
@@ -46,12 +46,34 @@
     border-radius: 50%; z-index: 2;
   }
   .critter {
-    position: absolute; left: 50%; bottom: 20%;
+    position: absolute; left: 50%; bottom: 16%;
     transform: translate(-50%, 160%);
-    font-size: clamp(48px, 11vmin, 96px); line-height: 1;
+    font-size: clamp(64px, 15vmin, 140px); line-height: 1;
     z-index: 3;
     transition: transform .16s cubic-bezier(.34,1.56,.64,1);
     pointer-events: none;
+  }
+  /* 白色圆形底托：让土拨鼠在棕色洞里永远清晰（仅钻出/被击中时显示） */
+  .critter.up::before, .critter.hit-anim::before, .critter.angry::before {
+    content: ""; position: absolute; left: 50%; top: 52%;
+    width: 1.45em; height: 1.45em; transform: translate(-50%, -50%);
+    background: #ffffff; border-radius: 50%;
+    box-shadow: 0 4px 16px rgba(0,0,0,.22), inset 0 0 0 3px #ece6da;
+    z-index: -1;
+    transition: box-shadow .15s;
+  }
+  /* 小兔子：粉底红边，一眼区分"不能打" */
+  .critter.bunny::before {
+    background: #ffe9f0;
+    box-shadow: 0 4px 16px rgba(0,0,0,.22), inset 0 0 0 4px #ff5c8a;
+  }
+  /* 打中反馈：白托闪绿边 */
+  .critter.good::before {
+    box-shadow: 0 0 0 6px #7ddb6f, 0 4px 16px rgba(0,0,0,.22);
+  }
+  /* 误打兔子：粉托闪红边 */
+  .critter.bad::before {
+    box-shadow: 0 0 0 6px #ff5c8a, 0 4px 16px rgba(0,0,0,.22);
   }
   .critter.up { transform: translate(-50%, 0); }
   .critter.hit-anim { transform: translate(-50%, 0) rotate(360deg) scale(.4); transition: transform .4s ease-in; }
@@ -97,6 +119,13 @@
   .confetti { position: fixed; top: -20px; z-index: 1200; pointer-events: none; animation: fall linear forwards; }
 
   @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-9px)} 40%{transform:translateX(9px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
+  /* iPad 大屏适配 */
+  @media (min-width: 768px) {
+    header { padding: 16px 0 6px; }
+    #bar { height: 18px; margin-top: 10px; }
+    #board { gap: 16px; padding: 14px 28px; }
+    .hole { border-radius: 40px; }
+  }
   @keyframes whack {
     0% { transform: translate(-50%,-50%) rotate(-65deg) scale(.6); }
     50% { transform: translate(-50%,-50%) rotate(14deg) scale(1.2); }
@@ -284,7 +313,7 @@
     hole.state = 'hit';
     clearTimeout(hole.timer);
     hole.critter.classList.remove('up');
-    hole.critter.classList.add('hit-anim');
+    hole.critter.classList.add('hit-anim', 'good');
     hole.critter.textContent = '😵';
     thump(); marmotSqueak();
     spawnStar(hole);
@@ -298,7 +327,7 @@
     hole.state = 'hit';
     clearTimeout(hole.timer);
     hole.critter.classList.remove('up');
-    hole.critter.classList.add('angry', 'shake');
+    hole.critter.classList.add('angry', 'shake', 'bad');
     rejectSound();
     spawnMood(hole, '😖');
     setTimeout(function () { resetCritter(hole); }, 560);
@@ -365,6 +394,7 @@
     hole.type = isBunny ? 'bunny' : 'marmot';
     hole.state = 'up';
     hole.critter.textContent = isBunny ? BUNNY : MARMOT;
+    hole.critter.classList.add(isBunny ? 'bunny' : 'marmot');
     hole.critter.classList.add('up');
     popUpSound();
     hole.timer = setTimeout(function () {
