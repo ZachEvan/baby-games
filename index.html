@@ -47,6 +47,8 @@
     .card .name { font-size: 38px; }
     .card .desc { font-size: 20px; }
     .card .arrow { font-size: 36px; }
+    /* 奇数个卡片时最后一个横跨整行，保持对称 */
+    .card:last-child:nth-child(odd) { grid-column: 1 / -1; }
   }
   .card {
     display: flex; align-items: center; gap: 22px;
@@ -98,6 +100,30 @@
       <div class="txt">
         <div class="name">打地鼠</div>
         <div class="desc">练反应 · 别打小兔子</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+    <a class="card" href="color-jars.html">
+      <div class="emoji">🫙</div>
+      <div class="txt">
+        <div class="name">彩虹罐罐</div>
+        <div class="desc">分颜色 · 学归类</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+    <a class="card" href="shape-puzzle.html">
+      <div class="emoji">🔷</div>
+      <div class="txt">
+        <div class="name">形状拼拼乐</div>
+        <div class="desc">认形状 · 放回位</div>
+      </div>
+      <div class="arrow">›</div>
+    </a>
+    <a class="card" href="count-fruit.html">
+      <div class="emoji">🍎</div>
+      <div class="txt">
+        <div class="name">数数果园</div>
+        <div class="desc">点数字 · 数水果</div>
       </div>
       <div class="arrow">›</div>
     </a>

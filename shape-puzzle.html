@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="形状拼拼乐">
+<title>形状拼拼乐 · 形状认知</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(180deg, #fff7ec 0%, #fdf3fa 100%);
+  }
+  body {
+    display: flex; flex-direction: column; height: 100dvh;
+    padding: calc(var(--safe-top)) calc(env(safe-area-inset-right,0px)) calc(var(--safe-bottom)) calc(env(safe-area-inset-left,0px));
+  }
+
+  header { text-align: center; padding: 10px 0 2px; }
+  header h1 { margin: 0; font-size: clamp(24px, 5vmin, 42px); color: #b06ab3; font-weight: 700; letter-spacing: 2px; }
+  header .sub { font-size: clamp(13px, 2.6vmin, 20px); color: #c9a0cc; margin-top: 2px; }
+
+  /* 凹槽板 */
+  #board {
+    flex: 1; display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: clamp(10px, 2.5vmin, 24px); padding: 14px 16px;
+    align-content: center; justify-content: center;
+    max-width: 720px; width: 100%; margin: 0 auto;
+  }
+  .slot {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    background: #fff; border-radius: 28px;
+    box-shadow: inset 0 0 0 4px #f0e2f2, 0 6px 16px rgba(0,0,0,.08);
+    aspect-ratio: 1.15;
+  }
+  /* 凹槽形状（虚线描边提示） */
+  .slot .shape {
+    width: 62%; height: 62%;
+    opacity: .28;
+  }
+  .slot.filled .shape { opacity: 0; }
+  .slot .piece {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 62%; height: 62%;
+  }
+
+  /* 待拼形状块 */
+  #tray {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(12px, 3vmin, 28px);
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom,0px));
+    flex-shrink: 0;
+  }
+  .block {
+    width: clamp(70px, 15vmin, 140px); height: clamp(70px, 15vmin, 140px);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: transform .2s ease;
+  }
+  .block:active { transform: scale(.9); }
+  .block .shape { width: 100%; height: 100%; }
+  .block.used { animation: shrink .45s ease forwards; pointer-events: none; }
+  @keyframes shrink { to { transform: scale(.05); opacity: 0; } }
+
+  .star { position: fixed; pointer-events: none; z-index: 900; font-size: 40px; animation: floatUp 1s ease-out forwards; }
+
+  #win {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(120,70,120,.35); z-index: 1100;
+  }
+  #win.show { display: flex; }
+  #win .card { background: #fff; border-radius: 26px; padding: 30px 40px; text-align: center; box-shadow: 0 14px 44px rgba(0,0,0,.25); }
+  #win .big { font-size: 64px; }
+  #win h2 { margin: 10px 0 6px; color: #b06ab3; font-size: 26px; }
+  #win button { margin-top: 14px; font-size: 22px; padding: 12px 34px; border: none; border-radius: 999px; background: #d89adc; color: #fff; cursor: pointer; }
+  #win button:active { transform: scale(.96); }
+
+  .confetti { position: fixed; top: -20px; z-index: 1200; pointer-events: none; animation: fall linear forwards; }
+
+  @keyframes floatUp { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-100px) scale(1.4);opacity:0} }
+  @keyframes fall { to { transform: translateY(105vh) rotate(360deg); } }
+
+  @media (min-width: 768px) {
+    header { padding: 18px 0 6px; }
+    #board { max-width: 880px; gap: 28px; padding: 24px 48px; }
+    #tray { gap: 40px; padding: 18px 48px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔷 形状拼拼乐</h1>
+  <div class="sub">把形状放回自己的家</div>
+</header>
+<div id="board"></div>
+<div id="tray"></div>
+<div id="win">
+  <div class="card">
+    <div class="big">🎉</div>
+    <h2>全都拼对啦！</h2>
+    <button id="again">再玩一次</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SHAPES = [
+    { key: 'circle', name: '圆形',   color: '#ef5b6b', svg: '<circle cx="50" cy="50" r="44" />' },
+    { key: 'square', name: '正方形', color: '#5b9be0', svg: '<rect x="10" y="10" width="80" height="80" rx="10" />' },
+    { key: 'tri',    name: '三角形', color: '#6cbf7a', svg: '<polygon points="50,8 94,88 6,88" />' },
+    { key: 'star',   name: '五角星', color: '#f5c84c', svg: '<polygon points="50,5 61,40 98,40 68,62 79,98 50,76 21,98 32,62 2,40 39,40" />' }
+  ];
+
+  var boardEl = document.getElementById('board');
+  var trayEl = document.getElementById('tray');
+  var winEl = document.getElementById('win');
+
+  var audioCtx = null;
+  function ac() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(type, f0, f1, t0, dur, vol) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + t0;
+    var o = c.createOscillator(); var g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function clickSound() { tone('triangle', 660, null, 0, 0.1, 0.25); tone('triangle', 880, null, 0.08, 0.16, 0.22); }
+  function winSound() {
+    [523, 659, 784, 1047, 784, 1047].forEach(function (f, i) { tone('sine', f, null, i * 0.12, 0.25, 0.2); });
+  }
+
+  function speak(text) {
+    try {
+      if ('speechSynthesis' in window) {
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN'; u.rate = 0.85; u.pitch = 1.2;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+    } catch (e) {}
+  }
+
+  function shapeSvg(s, fill) {
+    return '<svg viewBox="0 0 100 100" class="shape"><g fill="' + fill + '">' + s.svg + '</g></svg>';
+  }
+
+  function build() {
+    boardEl.innerHTML = '';
+    trayEl.innerHTML = '';
+    // 随机打乱形状顺序
+    var order = SHAPES.slice().sort(function () { return Math.random() - 0.5; });
+
+    order.forEach(function (s) {
+      var slot = document.createElement('div');
+      slot.className = 'slot'; slot.dataset.shape = s.key;
+      slot.innerHTML = '<div class="shape">' + shapeSvg(s, s.color) + '</div>';
+      boardEl.appendChild(slot);
+
+      var b = document.createElement('div');
+      b.className = 'block'; b.dataset.shape = s.key; b.dataset.name = s.name;
+      b.innerHTML = shapeSvg(s, s.color);
+      b.addEventListener('pointerdown', function (e) { onBlockTap(b, e); });
+      trayEl.appendChild(b);
+    });
+  }
+
+  var placed = 0;
+  function onBlockTap(block, e) {
+    if (e.cancelable) e.preventDefault();
+    if (block.classList.contains('used')) return;
+    var shape = block.dataset.shape;
+    var slot = boardEl.querySelector('.slot[data-shape="' + shape + '"]');
+    if (slot.classList.contains('filled')) return;
+
+    // 把块"飞"进凹槽
+    var br = block.getBoundingClientRect();
+    var sr = slot.getBoundingClientRect();
+    var dx = sr.left + sr.width / 2 - (br.left + br.width / 2);
+    var dy = sr.top + sr.height / 2 - (br.top + br.height / 2);
+
+    block.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(.62)';
+    block.style.transition = 'transform .45s cubic-bezier(.3,1.2,.4,1)';
+    block.classList.add('used');
+
+    slot.classList.add('filled');
+    // 在凹槽里放上彩色实心形状
+    var p = document.createElement('div');
+    p.className = 'piece';
+    p.innerHTML = shapeSvg(SHAPES.filter(function (x) { return x.key === shape; })[0], SHAPES.filter(function (x) { return x.key === shape; })[0].color);
+    slot.appendChild(p);
+
+    clickSound();
+    speak(block.dataset.name);
+    spawnStar(slot);
+
+    placed++;
+    if (placed >= SHAPES.length) {
+      setTimeout(function () { winEl.classList.add('show'); winSound(); confetti(); }, 500);
+    }
+  }
+
+  function spawnStar(slot) {
+    var r = slot.getBoundingClientRect();
+    var s = document.createElement('div');
+    s.className = 'star'; s.textContent = '⭐';
+    s.style.left = (r.left + r.width / 2 - 20) + 'px';
+    s.style.top = (r.top - 6) + 'px';
+    document.body.appendChild(s);
+    setTimeout(function () { s.remove(); }, 1000);
+  }
+
+  function confetti() {
+    var colors = ['#ef5b6b', '#5b9be0', '#6cbf7a', '#f5c84c', '#d89adc'];
+    for (var i = 0; i < 50; i++) {
+      var c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = (Math.random() * 100) + 'vw';
+      c.style.width = (6 + Math.random() * 8) + 'px';
+      c.style.height = (6 + Math.random() * 8) + 'px';
+      c.style.background = colors[Math.floor(Math.random() * colors.length)];
+      c.style.animationDuration = (2 + Math.random() * 2) + 's';
+      document.body.appendChild(c);
+      setTimeout(function () { c.remove(); }, 4500);
+    }
+  }
+
+  document.getElementById('again').addEventListener('click', function () {
+    winEl.classList.remove('show');
+    placed = 0;
+    build();
+  });
+
+  build();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="数数果园">
+<title>数数果园 · 数字点读</title>
+<style>
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(180deg, #ffffff 0%, #f2faf0 100%);
+  }
+  body {
+    display: flex; flex-direction: column; height: 100dvh;
+    padding: calc(var(--safe-top)) calc(env(safe-area-inset-right,0px)) calc(var(--safe-bottom)) calc(env(safe-area-inset-left,0px));
+  }
+
+  header { text-align: center; padding: 10px 0 2px; }
+  header h1 { margin: 0; font-size: clamp(24px, 5vmin, 42px); color: #5c9a4d; font-weight: 700; letter-spacing: 2px; }
+  header .sub { font-size: clamp(13px, 2.6vmin, 20px); color: #8ab57f; margin-top: 2px; }
+
+  /* 数字键 */
+  #keys {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: clamp(8px, 2vmin, 18px);
+    padding: 10px 14px; flex-shrink: 0;
+    max-width: 760px; width: 100%; margin: 0 auto;
+  }
+  .key {
+    display: flex; align-items: center; justify-content: center;
+    aspect-ratio: 1;
+    font-size: clamp(40px, 9vmin, 84px); font-weight: 800;
+    border-radius: 24px; cursor: pointer;
+    transition: transform .15s ease;
+    box-shadow: 0 6px 16px rgba(0,0,0,.12);
+    color: #fff;
+  }
+  .key:active { transform: scale(.9); }
+  .key.on { animation: pop .35s ease; }
+  @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
+
+  /* 展示区 */
+  #stage {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap; gap: clamp(10px, 2.5vmin, 26px);
+    padding: 14px 20px; align-content: center;
+    max-width: 1000px; width: 100%; margin: 0 auto;
+  }
+  .fruit {
+    font-size: clamp(56px, 12vmin, 130px); line-height: 1;
+    animation: fruitPop .5s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes fruitPop { 0%{transform:scale(0);opacity:0} 100%{transform:scale(1);opacity:1} }
+
+  #counter {
+    font-size: clamp(22px, 4.5vmin, 40px); font-weight: 700; color: #5c9a4d;
+    text-align: center; padding-bottom: 12px; letter-spacing: 1px;
+  }
+
+  .star { position: fixed; pointer-events: none; z-index: 900; font-size: 40px; animation: floatUp 1s ease-out forwards; }
+  @keyframes floatUp { 0%{transform:translateY(0) scale(1);opacity:1} 100%{transform:translateY(-100px) scale(1.4);opacity:0} }
+
+  @media (min-width: 768px) {
+    header { padding: 18px 0 6px; }
+    #keys { gap: 24px; padding: 18px 48px; }
+    .key { border-radius: 32px; }
+    #stage { gap: 36px; padding: 24px 48px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🍎 数数果园</h1>
+  <div class="sub">点数字，看水果蹦出来</div>
+</header>
+<div id="keys"></div>
+<div id="stage"></div>
+<div id="counter">点上面的数字吧～</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // 5 种水果对应 1-5
+  var FRUITS = ['🍓', '🍎', '🍌', '🍇', '🍐'];
+  var KEY_COLORS = ['#ef5b6b', '#f5a25b', '#f5c84c', '#6cbf7a', '#5b9be0'];
+
+  var keysEl = document.getElementById('keys');
+  var stageEl = document.getElementById('stage');
+  var counterEl = document.getElementById('counter');
+
+  var audioCtx = null;
+  function ac() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(type, f0, f1, t0, dur, vol) {
+    var c = ac(); if (!c) return;
+    var t = c.currentTime + t0;
+    var o = c.createOscillator(); var g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  // 数字发音对应的音高，简单悦耳
+  function countSound(n) {
+    for (var i = 0; i < n; i++) {
+      tone('sine', 440 + i * 120, null, i * 0.09, 0.12, 0.22);
+    }
+  }
+
+  function speak(text) {
+    try {
+      if ('speechSynthesis' in window) {
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN'; u.rate = 0.8; u.pitch = 1.25;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+    } catch (e) {}
+  }
+
+  function buildKeys() {
+    for (var i = 1; i <= 5; i++) {
+      (function (n) {
+        var k = document.createElement('div');
+        k.className = 'key'; k.textContent = n;
+        k.style.background = KEY_COLORS[n - 1];
+        k.addEventListener('pointerdown', function (e) {
+          if (e.cancelable) e.preventDefault();
+          showFruits(n);
+        });
+        keysEl.appendChild(k);
+      })(i);
+    }
+  }
+
+  function showFruits(n) {
+    stageEl.innerHTML = '';
+    for (var i = 0; i < n; i++) {
+      var f = document.createElement('div');
+      f.className = 'fruit'; f.textContent = FRUITS[n - 1];
+      f.style.animationDelay = (i * 0.12) + 's';
+      stageEl.appendChild(f);
+    }
+    counterEl.textContent = n + ' 个 ' + '水果';
+    countSound(n);
+    speak(String(n));
+    // 数字键弹跳
+    var key = keysEl.children[n - 1];
+    key.classList.remove('on'); void key.offsetWidth; key.classList.add('on');
+  }
+
+  buildKeys();
+})();
+</script>
+</body>
+</html>
