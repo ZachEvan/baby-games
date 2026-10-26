@@ -224,12 +224,14 @@
   // ---------- 拖拽 ----------
   var dragging = null;
   var offX = 0, offY = 0;
+  var startX = 0, startY = 0;
 
   function startDrag(block, e) {
     if (e.cancelable) e.preventDefault();
     if (block.classList.contains('used')) return;
     ac();
     dragging = block;
+    startX = e.clientX; startY = e.clientY;
     var r = block.getBoundingClientRect();
     offX = e.clientX - r.left;
     offY = e.clientY - r.top;
@@ -256,6 +258,15 @@
     var block = dragging;
     dragging = null;
     boardEl.querySelectorAll('.slot').forEach(function (s) { s.classList.remove('hover'); });
+
+    // 移动距离过小视为“点击”，不判定
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+    var moved = Math.sqrt(dx * dx + dy * dy);
+    if (moved < 24) {
+      bounceBack(block);
+      return;
+    }
 
     var slot = hitSlot(e.clientX, e.clientY);
     if (slot && slot.dataset.shape === block.dataset.shape && !slot.classList.contains('filled')) {

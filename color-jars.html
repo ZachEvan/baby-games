@@ -218,12 +218,14 @@
   // ---------- 拖拽逻辑 ----------
   var dragging = null;
   var dragOffsetX = 0, dragOffsetY = 0;
+  var startX = 0, startY = 0;
 
   function startDrag(el, e) {
     if (e.cancelable) e.preventDefault();
     if (el.classList.contains('placed')) return;
     ac();
     dragging = el;
+    startX = e.clientX; startY = e.clientY;
     var r = el.getBoundingClientRect();
     // 记录手指相对元素左上角的偏移
     dragOffsetX = e.clientX - r.left;
@@ -252,6 +254,16 @@
     var el = dragging;
     dragging = null;
     jarsEl.querySelectorAll('.jar').forEach(function (j) { j.classList.remove('hover'); });
+
+    // 判断是否发生了真实拖拽：移动距离过小视为“点击”，不判定得分
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+    var moved = Math.sqrt(dx * dx + dy * dy);
+    if (moved < 24) {
+      // 纯点击：直接弹回原位，不得分
+      bounceBack(el);
+      return;
+    }
 
     var jar = hitJar(e.clientX, e.clientY);
     if (jar && jar.dataset.color === el.dataset.color) {
