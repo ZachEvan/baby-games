@@ -69,9 +69,15 @@
     font-size: clamp(44px, 10vmin, 100px); line-height: 1;
     background: #fff; border-radius: 50%;
     box-shadow: 0 6px 18px rgba(0,0,0,.14), inset 0 0 0 3px rgba(0,0,0,.04);
-    cursor: pointer; transition: transform .15s ease;
+    cursor: pointer; transition: transform .15s ease, box-shadow .15s ease;
+    touch-action: none;
   }
-  .item:active { transform: scale(.9); }
+  .item.dragging {
+    position: fixed; z-index: 1000; margin: 0;
+    transform: scale(1.15); box-shadow: 0 12px 28px rgba(0,0,0,.28);
+    pointer-events: none;
+  }
+  .jar.hover { transform: scale(1.12); box-shadow: 0 0 0 5px rgba(255,255,255,.9), 0 10px 26px rgba(0,0,0,.3); }
   .item.placed { animation: fly .5s ease forwards; }
   @keyframes fly {
     0% { transform: scale(1); opacity: 1; }
@@ -203,29 +209,92 @@
     ITEMS.forEach(function (it) {
       var d = document.createElement('div');
       d.className = 'item'; d.textContent = it.emoji; d.dataset.color = it.color; d.dataset.name = it.name;
-      d.addEventListener('pointerdown', function (e) { onItemTap(d, e); });
+      d.addEventListener('pointerdown', function (e) { startDrag(d, e); });
       itemsEl.appendChild(d);
     });
     remaining = ITEMS.length;
   }
 
-  function onItemTap(el, e) {
+  // ---------- 拖拽逻辑 ----------
+  var dragging = null;
+  var dragOffsetX = 0, dragOffsetY = 0;
+
+  function startDrag(el, e) {
     if (e.cancelable) e.preventDefault();
     if (el.classList.contains('placed')) return;
-    var color = el.dataset.color;
-    // 目标：找对应的罐子
-    var jar = jarsEl.querySelector('.jar[data-color="' + color + '"]');
+    ac();
+    dragging = el;
+    var r = el.getBoundingClientRect();
+    // 记录手指相对元素左上角的偏移
+    dragOffsetX = e.clientX - r.left;
+    dragOffsetY = e.clientY - r.top;
+    el.classList.add('dragging');
+    el.style.left = (e.clientX - dragOffsetX) + 'px';
+    el.style.top = (e.clientY - dragOffsetY) + 'px';
+    el.style.width = r.width + 'px';
+    el.style.height = r.height + 'px';
+  }
+
+  function moveDrag(e) {
+    if (!dragging) return;
+    if (e.cancelable) e.preventDefault();
+    dragging.style.left = (e.clientX - dragOffsetX) + 'px';
+    dragging.style.top = (e.clientY - dragOffsetY) + 'px';
+    // 高亮悬停的罐子
+    var hoverJar = hitJar(e.clientX, e.clientY);
+    jarsEl.querySelectorAll('.jar').forEach(function (j) {
+      j.classList.toggle('hover', j === hoverJar);
+    });
+  }
+
+  function endDrag(e) {
+    if (!dragging) return;
+    var el = dragging;
+    dragging = null;
+    jarsEl.querySelectorAll('.jar').forEach(function (j) { j.classList.remove('hover'); });
+
+    var jar = hitJar(e.clientX, e.clientY);
+    if (jar && jar.dataset.color === el.dataset.color) {
+      // 拖对
+      placeInto(el, jar);
+    } else {
+      // 拖错或没放到罐子：弹回原位
+      bounceBack(el);
+    }
+  }
+
+  function hitJar(x, y) {
+    var target = null;
+    jarsEl.querySelectorAll('.jar').forEach(function (j) {
+      var r = j.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) target = j;
+    });
+    return target;
+  }
+
+  function bounceBack(el) {
+    el.classList.remove('dragging');
+    el.style.transition = 'transform .3s ease, left .3s ease, top .3s ease';
+    el.style.left = '';
+    el.style.top = '';
+    el.style.width = '';
+    el.style.height = '';
+    el.style.transform = '';
+    wrongSound();
+    setTimeout(function () { el.style.transition = ''; }, 320);
+  }
+
+  function placeInto(el, jar) {
     var cnt = jar.querySelector('.cnt');
     cnt.textContent = (+cnt.textContent) + 1;
 
-    var r = el.getBoundingClientRect();
-    var jr = jar.getBoundingClientRect();
-    var targetX = jr.left + jr.width / 2 - (r.left + r.width / 2);
-    var targetY = jr.top + jr.height * 0.5 - (r.top + r.height / 2);
-
-    el.style.transform = 'translate(' + targetX + 'px,' + targetY + 'px) scale(.4)';
-    el.style.transition = 'transform .45s cubic-bezier(.3,1.2,.4,1)';
+    // 从拖动态归位：先清除 fixed，再飞到罐子
+    el.classList.remove('dragging');
+    el.style.transition = 'transform .4s cubic-bezier(.3,1.2,.4,1), opacity .4s';
+    el.style.transform = 'scale(.1)';
+    el.style.opacity = '0';
     el.classList.add('placed');
+    el.style.left = ''; el.style.top = ''; el.style.width = ''; el.style.height = '';
 
     correctSound();
     speak(el.dataset.name);
@@ -234,13 +303,19 @@
 
     remaining--;
     setTimeout(function () {
+      el.style.display = 'none';
       if (remaining <= 0) {
         winEl.classList.add('show');
         winSound();
         confetti();
       }
-    }, 600);
+    }, 420);
   }
+
+  // 全局监听拖拽移动/结束
+  window.addEventListener('pointermove', moveDrag);
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
 
   function spawnStar(jar) {
     var r = jar.getBoundingClientRect();
